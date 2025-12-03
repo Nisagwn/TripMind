@@ -1,0 +1,49 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Mekanlar koleksiyonu — script ile ekleme içindir
+    match /places/{placeId} {
+      allow read: if true;
+      allow write: if request.time < timestamp.date(2026, 1, 1);
+    }
+
+    // Mekan alt koleksiyonları (comments, photos, visitedPlaces)
+    match /places/{placeId}/{collection}/{docId} {
+      allow read: if true;
+      allow write: if request.time < timestamp.date(2026, 1, 1);
+    }
+
+    // Kullanıcı koleksiyonu
+    match /users/{userId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Kullanıcı alt koleksiyonları (favorites, visitedPlaces)
+    match /users/{userId}/{collection}/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Explicit favorites rule for clarity
+    match /users/{userId}/favorites/{favId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Chats and messages
+    match /users/{userId}/chats/{chatId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+      
+      match /messages/{messageId} {
+        allow read, write: if request.auth != null && request.auth.uid == userId;
+      }
+    }
+
+    // Routes
+    match /users/{userId}/routes/{routeId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
