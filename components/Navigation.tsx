@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { MapPin, Compass, Home, User, LogOut, Heart, Camera, MessageCircle } from 'lucide-react'
+import { MapPin, Compass, Home, User, LogOut, Heart, Camera, Route } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { useAuth } from '@/contexts/AuthContext'
 import { useState } from 'react'
@@ -16,7 +16,7 @@ export default function Navigation() {
     { href: '/', label: 'Ana Sayfa', icon: Home },
     { href: '/places', label: 'Keşfet', icon: Compass },
     { href: '/gallery', label: 'Galeri', icon: Camera },
-    { href: '/chat', label: 'Chat', icon: MessageCircle },
+    { href: '/planner', label: 'Rota Planla', icon: Route },
   ]
 
   const handleLogout = async () => {
@@ -29,7 +29,7 @@ export default function Navigation() {
   }
 
   return (
-    <motion.nav 
+    <motion.nav
       initial={{ y: -100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.6 }}
@@ -38,7 +38,7 @@ export default function Navigation() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <motion.div 
+          <motion.div
             whileHover={{ scale: 1.05 }}
             className="flex items-center space-x-2"
           >
@@ -55,16 +55,15 @@ export default function Navigation() {
             {navItems.map((item) => {
               const Icon = item.icon
               const isActive = pathname === item.href
-              
+
               return (
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 ${
-                    isActive
+                  className={`flex items-center space-x-2 px-4 py-2 rounded-xl transition-all duration-300 ${isActive
                       ? 'bg-sky-600 text-white shadow-md'
                       : 'text-gray-600 hover:text-sky-600 hover:bg-sky-50'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-4 h-4" />
                   <span className="font-medium">{item.label}</span>

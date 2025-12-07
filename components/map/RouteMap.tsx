@@ -20,17 +20,22 @@ declare global {
   interface Window {
     google: any
     initMap: () => void
+    googleMapsLoading?: boolean
+    googleMapsLoaded?: boolean
   }
 }
 
 export default function RouteMap({ places, height = '500px' }: RouteMapProps) {
   const mapRef = useRef<HTMLDivElement>(null)
-  const [map, setMap] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const mapInstanceRef = useRef<any>(null)
 
   useEffect(() => {
-    if (!mapRef.current || places.length === 0) return
+    if (!mapRef.current || places.length === 0) {
+      setLoading(false)
+      return
+    }
 
     const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
@@ -46,13 +51,43 @@ export default function RouteMap({ places, height = '500px' }: RouteMapProps) {
       return
     }
 
+    // Check if script is already loading
+    if (window.googleMapsLoading) {
+      // Wait for it to load
+      const checkInterval = setInterval(() => {
+        if (window.google && window.google.maps) {
+          clearInterval(checkInterval)
+          initializeMap()
+        }
+      }, 100)
+      return () => clearInterval(checkInterval)
+    }
+
+    // Check if script already exists in DOM
+    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]')
+    if (existingScript) {
+      const checkInterval = setInterval(() => {
+        if (window.google && window.google.maps) {
+          clearInterval(checkInterval)
+          initializeMap()
+        }
+      }, 100)
+      return () => clearInterval(checkInterval)
+    }
+
     // Load Google Maps script
+    window.googleMapsLoading = true
     const script = document.createElement('script')
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry`
     script.async = true
     script.defer = true
-    script.onload = initializeMap
+    script.onload = () => {
+      window.googleMapsLoading = false
+      window.googleMapsLoaded = true
+      initializeMap()
+    }
     script.onerror = () => {
+      window.googleMapsLoading = false
       setError('Google Maps yüklenemedi')
       setLoading(false)
     }
@@ -158,7 +193,7 @@ export default function RouteMap({ places, height = '500px' }: RouteMapProps) {
           mapInstance.setZoom(14)
         }
 
-        setMap(mapInstance)
+        mapInstanceRef.current = mapInstance
         setLoading(false)
       } catch (err: any) {
         console.error('Map initialization error:', err)

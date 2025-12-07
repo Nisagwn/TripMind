@@ -150,3 +150,4 @@ serviceAccountKey.json
 *.key
 serviceAccountKey.json
 serviceAccountKey.d.ts
+serviceAccount.json

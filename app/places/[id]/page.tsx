@@ -71,7 +71,7 @@ export default function PlaceDetailPage() {
     const R = 6371; // Earth's radius in kilometers
     const dLat = (lat2 - lat1) * Math.PI / 180;
     const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a = 
+    const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
       Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
       Math.sin(dLon / 2) * Math.sin(dLon / 2);
@@ -83,15 +83,15 @@ export default function PlaceDetailPage() {
   useEffect(() => {
     const fetchNearbyPlaces = async () => {
       if (!place || !(place as any).latitude || !(place as any).longitude) return;
-      
+
       try {
         const placesRef = collection(db, "places");
         const placesSnap = await getDocs(placesRef);
-        
+
         const allPlaces = placesSnap.docs
           .map(doc => ({ id: doc.id, ...doc.data() }))
           .filter((p: any) => p.id !== place.id && p.latitude && p.longitude); // Exclude current place
-        
+
         // Calculate distances and sort
         const placesWithDistance = allPlaces.map((p: any) => ({
           ...p,
@@ -102,18 +102,18 @@ export default function PlaceDetailPage() {
             p.longitude
           )
         }));
-        
+
         // Sort by distance and take top 5
         const nearest = placesWithDistance
           .sort((a, b) => a.distance - b.distance)
           .slice(0, 5);
-        
+
         setNearbyPlaces(nearest);
       } catch (err) {
         console.error("Yakındaki mekanlar alınamadı:", err);
       }
     };
-    
+
     if (place) fetchNearbyPlaces();
   }, [place]);
 
@@ -142,7 +142,7 @@ export default function PlaceDetailPage() {
   }
 
   const photos = place.photos && place.photos.length > 0 ? place.photos : [place.imageUrl || '/default-place.jpg'];
-  
+
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }).map((_, i) => (
       <Star key={i} className={`w-5 h-5 ${i < Math.round(rating) ? 'text-yellow-500 fill-current' : 'text-gray-300'}`} />
@@ -204,9 +204,9 @@ export default function PlaceDetailPage() {
           className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-xl overflow-hidden mb-8 border border-teal-100"
         >
           <div className="relative h-[500px] w-full overflow-hidden">
-            <img 
-              src={photos[selectedPhoto]} 
-              alt={place.name} 
+            <img
+              src={photos[selectedPhoto]}
+              alt={place.name}
               className="w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
@@ -241,8 +241,8 @@ export default function PlaceDetailPage() {
                       {renderStars(place.rating)}
                     </div>
                     <span className="text-lg font-semibold">{place.rating.toFixed(1)}</span>
-                    {place.userRatingCount > 0 && (
-                      <span className="text-sm">({place.userRatingCount} değerlendirme)</span>
+                    {(place.userRatingsTotal || place.userRatingCount) > 0 && (
+                      <span className="text-sm">({place.userRatingsTotal || place.userRatingCount} değerlendirme)</span>
                     )}
                   </div>
                 )}
@@ -261,13 +261,12 @@ export default function PlaceDetailPage() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setSelectedPhoto(index)}
-                    className={`relative h-24 rounded-xl overflow-hidden transition-all duration-300 ${
-                      selectedPhoto === index ? 'ring-4 ring-teal-500 shadow-lg' : 'ring-2 ring-teal-200'
-                    }`}
+                    className={`relative h-24 rounded-xl overflow-hidden transition-all duration-300 ${selectedPhoto === index ? 'ring-4 ring-teal-500 shadow-lg' : 'ring-2 ring-teal-200'
+                      }`}
                   >
-                    <img 
-                      src={photo} 
-                      alt={`${place.name} - ${index + 1}`} 
+                    <img
+                      src={photo}
+                      alt={`${place.name} - ${index + 1}`}
                       className="w-full h-full object-cover"
                     />
                   </motion.button>
@@ -292,7 +291,7 @@ export default function PlaceDetailPage() {
                 <span>📍</span>
                 <span>Konum Bilgileri</span>
               </h2>
-              
+
               {place.latitude && place.longitude && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-3 text-gray-700 bg-teal-50 px-4 py-3 rounded-xl">
@@ -301,7 +300,7 @@ export default function PlaceDetailPage() {
                       <span className="font-semibold">Koordinatlar:</span> {place.latitude.toFixed(6)}, {place.longitude.toFixed(6)}
                     </span>
                   </div>
-                  
+
                   {/* Google Maps Embed */}
                   <div className="rounded-2xl overflow-hidden shadow-md h-[400px] mt-4">
                     <iframe
@@ -331,7 +330,46 @@ export default function PlaceDetailPage() {
               )}
             </motion.div>
 
-            {/* Yorumlar */}
+            {/* Google Yorumları */}
+            {place.reviews && place.reviews.length > 0 && (
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8, delay: 0.15 }}
+                className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-lg p-8 border border-teal-100 mt-8"
+              >
+                <h2 className="text-2xl font-poppins font-bold text-teal-900 mb-6 flex items-center gap-2">
+                  <span>🌟</span>
+                  <span>Google Yorumları</span>
+                  <span className="text-base font-inter font-normal text-gray-500">({place.userRatingsTotal || place.reviews.length} değerlendirme)</span>
+                </h2>
+                <div className="space-y-4">
+                  {place.reviews.map((review: any, index: number) => (
+                    <div key={index} className="bg-gradient-to-br from-teal-50/50 to-cyan-50/50 rounded-xl p-5 border border-teal-100">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-gradient-to-br from-teal-400 to-cyan-400 rounded-full flex items-center justify-center text-white font-bold">
+                            {review.authorName?.charAt(0)?.toUpperCase() || '?'}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-gray-900 font-inter">{review.authorName}</p>
+                            <p className="text-sm text-gray-500 font-inter">{review.relativeTimeDescription}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1 bg-amber-50 px-3 py-1 rounded-full">
+                          {Array.from({ length: 5 }).map((_, i) => (
+                            <Star key={i} className={`w-4 h-4 ${i < review.rating ? 'text-yellow-500 fill-current' : 'text-gray-300'}`} />
+                          ))}
+                        </div>
+                      </div>
+                      <p className="text-gray-700 font-inter leading-relaxed">{review.text}</p>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            )}
+
+            {/* Kullanıcı Yorumları */}
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
@@ -400,7 +438,7 @@ export default function PlaceDetailPage() {
               className="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-2xl shadow-lg p-6 sticky top-8 border border-teal-100"
             >
               <h3 className="text-xl font-poppins font-bold text-teal-900 mb-6">📞 İletişim & Bilgiler</h3>
-              
+
               <div className="space-y-4">
                 {place.category && (
                   <div className="flex items-center gap-3 bg-white/70 backdrop-blur-sm p-3 rounded-xl">
@@ -435,9 +473,9 @@ export default function PlaceDetailPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-xs text-gray-500 font-inter">Website</p>
-                      <a 
-                        href={place.website} 
-                        target="_blank" 
+                      <a
+                        href={place.website}
+                        target="_blank"
                         rel="noopener noreferrer"
                         className="font-medium font-inter text-gray-900 hover:text-teal-600 transition-colors truncate block"
                       >
@@ -500,10 +538,10 @@ function NearbyPlaceCard({ place, index }: { place: any; index: number }) {
       <Link href={`/places/${place.id}`}>
         <div className="bg-gradient-to-br from-white via-teal-50/30 to-cyan-50/30 backdrop-blur-sm rounded-2xl shadow-md hover:shadow-lg transition-all duration-300 overflow-hidden border-2 border-teal-100 h-full">
           <div className="relative h-48 overflow-hidden">
-            <img 
-              src={place.imageUrl || '/default-place.jpg'} 
-              alt={place.name} 
-              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+            <img
+              src={place.imageUrl || '/default-place.jpg'}
+              alt={place.name}
+              className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
             {place.category && (
@@ -515,26 +553,26 @@ function NearbyPlaceCard({ place, index }: { place: any; index: number }) {
               <div className="absolute top-3 right-3 bg-white/95 backdrop-blur-sm text-gray-700 px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1">
                 <Navigation className="w-3 h-3 text-teal-600" />
                 <span className="text-xs font-semibold font-inter">
-                  {place.distance < 1 
-                    ? `${(place.distance * 1000).toFixed(0)}m` 
+                  {place.distance < 1
+                    ? `${(place.distance * 1000).toFixed(0)}m`
                     : `${place.distance.toFixed(1)}km`}
                 </span>
               </div>
             )}
           </div>
-          
+
           <div className="p-5">
             <h3 className="text-base font-poppins font-bold text-gray-900 mb-2 group-hover:text-teal-600 transition-colors duration-300 line-clamp-1">
               {place.name}
             </h3>
-            
+
             {place.address && (
               <div className="flex items-center text-gray-600 mb-3">
                 <MapPin className="w-4 h-4 mr-1.5 flex-shrink-0 text-teal-500" />
                 <span className="text-sm font-inter line-clamp-1">{place.address}</span>
               </div>
             )}
-            
+
             {place.rating > 0 && (
               <div className="flex items-center bg-gradient-to-r from-amber-50 to-yellow-50 px-3 py-1.5 rounded-full w-fit">
                 <div className="flex gap-0.5">
@@ -545,7 +583,7 @@ function NearbyPlaceCard({ place, index }: { place: any; index: number }) {
                 </span>
               </div>
             )}
-            
+
             <div className="mt-4 pt-3 border-t border-teal-100">
               <div className="text-transparent bg-clip-text bg-gradient-to-r from-teal-600 to-cyan-600 font-semibold text-sm font-inter group-hover:translate-x-1 transition-transform duration-300 inline-block">
                 Detaya Git →

@@ -84,7 +84,7 @@ export default function PlacesPage() {
     const fetchPlaces = async () => {
       try {
         setLoading(true)
-        const q = query(collection(db, 'places'), fsLimit(20))
+        const q = query(collection(db, 'places'), fsLimit(100))
         const snapshot = await getDocs(q)
         const placesData = snapshot.docs.map(doc => {
           const data = doc.data()
@@ -100,12 +100,12 @@ export default function PlacesPage() {
             longitude: data.longitude || 0,
             description: data.description || '',
             photos: data.photos || [],
-            userRatingCount: data.userRatingCount || 0
+            userRatingsTotal: data.userRatingsTotal || data.userRatingCount || 0
           }
         })
         setPlaces(placesData)
         lastDocRef.current = snapshot.docs[snapshot.docs.length - 1] || null
-        hasMoreRef.current = snapshot.docs.length === 20
+        hasMoreRef.current = snapshot.docs.length === 100
 
         // Extract unique categories dynamically from loaded batch
         const uniqueCategories = Array.from(new Set(placesData.map(p => p.category).filter(Boolean))).sort()
@@ -146,7 +146,7 @@ export default function PlacesPage() {
     if (!hasMoreRef.current || loadingMore || !lastDocRef.current) return
     setLoadingMore(true)
     try {
-      const q = query(collection(db, 'places'), startAfter(lastDocRef.current), fsLimit(20))
+      const q = query(collection(db, 'places'), startAfter(lastDocRef.current), fsLimit(100))
       const snapshot = await getDocs(q)
       const more = snapshot.docs.map(doc => {
         const data = doc.data()
@@ -162,12 +162,12 @@ export default function PlacesPage() {
           longitude: data.longitude || 0,
           description: data.description || '',
           photos: data.photos || [],
-          userRatingCount: data.userRatingCount || 0
+          userRatingsTotal: data.userRatingsTotal || data.userRatingCount || 0
         }
       })
       setPlaces(prev => [...prev, ...more])
       lastDocRef.current = snapshot.docs[snapshot.docs.length - 1] || lastDocRef.current
-      hasMoreRef.current = snapshot.docs.length === 20
+      hasMoreRef.current = snapshot.docs.length === 100
     } finally {
       setLoadingMore(false)
     }
@@ -177,9 +177,9 @@ export default function PlacesPage() {
     const term = searchTerm.toLowerCase()
     return places.filter(place => {
       const matchesSearch = place.name && place.name.toLowerCase().includes(term)
-    const matchesCategory = selectedCategory === 'Tümü' || place.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+      const matchesCategory = selectedCategory === 'Tümü' || place.category === selectedCategory
+      return matchesSearch && matchesCategory
+    })
   }, [places, searchTerm, selectedCategory])
 
   // Get count for each category (from full DB snapshot)
@@ -198,14 +198,14 @@ export default function PlacesPage() {
   // Get top 7 most used categories (excluding "Tümü")
   const categoriesWithCounts = useMemo(() => (
     categories
-    .filter(cat => cat !== 'Tümü')
-    .map(cat => ({ name: cat, count: getCategoryCount(cat) }))
-    .sort((a, b) => b.count - a.count)
+      .filter(cat => cat !== 'Tümü')
+      .map(cat => ({ name: cat, count: getCategoryCount(cat) }))
+      .sort((a, b) => b.count - a.count)
   ), [categories, categoryCounts])
-  
+
   const topCategories = categoriesWithCounts.slice(0, 7).map(c => c.name)
   const otherCategories = categoriesWithCounts.slice(7).map(c => c.name)
-  
+
   // Displayed categories based on showAll state
   const displayedCategories = ['Tümü', ...topCategories, ...(showAllCategories ? otherCategories : [])]
 
@@ -282,14 +282,14 @@ export default function PlacesPage() {
                 className="w-full pl-16 pr-12 py-4 rounded-full shadow-md border border-gray-200 focus:ring-2 focus:ring-teal-400 focus:outline-none focus:border-teal-400 text-gray-700 bg-white transition-all duration-300 font-inter text-base placeholder:text-gray-400"
               />
               {/* Clear search button */}
-                {searchTerm && (
+              {searchTerm && (
                 <button
-                    onClick={() => setSearchTerm('')}
-                    className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors z-10"
-                  >
-                    <X className="w-5 h-5" />
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors z-10"
+                >
+                  <X className="w-5 h-5" />
                 </button>
-                )}
+              )}
             </div>
 
             {/* Category Filter and Sort - Centered */}
@@ -302,11 +302,10 @@ export default function PlacesPage() {
                       <button
                         key={category}
                         onClick={() => setSelectedCategory(category)}
-                        className={`px-5 py-2.5 rounded-full text-sm font-medium shadow-sm cursor-pointer transition-all duration-200 transform hover:scale-105 font-inter flex items-center gap-2 ${
-                          selectedCategory === category
+                        className={`px-5 py-2.5 rounded-full text-sm font-medium shadow-sm cursor-pointer transition-all duration-200 transform hover:scale-105 font-inter flex items-center gap-2 ${selectedCategory === category
                             ? 'bg-teal-500 text-white shadow-md scale-105'
                             : 'bg-white text-gray-700 hover:bg-teal-100 border border-gray-200'
-                        }`}
+                          }`}
                       >
                         <span>{`${getCategoryLabel(category)} (${getCategoryCount(category)})`}</span>
                       </button>
@@ -344,71 +343,71 @@ export default function PlacesPage() {
         </motion.div>
 
         {/* Filter Summary */}
-          {(selectedCategory !== 'Tümü' || searchTerm) && (
+        {(selectedCategory !== 'Tümü' || searchTerm) && (
           <div
-              className="mb-6 bg-white/90 backdrop-blur-sm rounded-2xl px-6 py-3 shadow-md border border-teal-100 flex items-center gap-3"
+            className="mb-6 bg-white/90 backdrop-blur-sm rounded-2xl px-6 py-3 shadow-md border border-teal-100 flex items-center gap-3"
+          >
+            <Filter className="w-5 h-5 text-teal-600" />
+            <p className="text-sm font-inter text-gray-700 flex-1">
+              {searchTerm && selectedCategory !== 'Tümü' ? (
+                <>
+                  <span className="font-semibold text-teal-900">"{searchTerm}"</span> araması için{' '}
+                  <span className="font-semibold text-teal-900">{getCategoryLabel(selectedCategory)}</span> kategorisinde{' '}
+                  <span className="font-bold text-teal-600">{filteredPlaces.length}</span> sonuç bulundu
+                </>
+              ) : searchTerm ? (
+                <>
+                  <span className="font-semibold text-teal-900">"{searchTerm}"</span> araması için{' '}
+                  <span className="font-bold text-teal-600">{filteredPlaces.length}</span> sonuç bulundu
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold text-teal-900">{getCategoryLabel(selectedCategory)}</span> kategorisinde{' '}
+                  <span className="font-bold text-teal-600">{filteredPlaces.length}</span> mekan gösteriliyor
+                </>
+              )}
+            </p>
+            <button
+              onClick={() => {
+                setSelectedCategory('Tümü')
+                setSearchTerm('')
+              }}
+              className="text-xs text-teal-600 hover:text-teal-700 font-medium hover:underline transition-colors"
             >
-              <Filter className="w-5 h-5 text-teal-600" />
-              <p className="text-sm font-inter text-gray-700 flex-1">
-                {searchTerm && selectedCategory !== 'Tümü' ? (
-                  <>
-                    <span className="font-semibold text-teal-900">"{searchTerm}"</span> araması için{' '}
-                    <span className="font-semibold text-teal-900">{getCategoryLabel(selectedCategory)}</span> kategorisinde{' '}
-                    <span className="font-bold text-teal-600">{filteredPlaces.length}</span> sonuç bulundu
-                  </>
-                ) : searchTerm ? (
-                  <>
-                    <span className="font-semibold text-teal-900">"{searchTerm}"</span> araması için{' '}
-                    <span className="font-bold text-teal-600">{filteredPlaces.length}</span> sonuç bulundu
-                  </>
-                ) : (
-                  <>
-                    <span className="font-semibold text-teal-900">{getCategoryLabel(selectedCategory)}</span> kategorisinde{' '}
-                    <span className="font-bold text-teal-600">{filteredPlaces.length}</span> mekan gösteriliyor
-                  </>
-                )}
-              </p>
-              <button
-                onClick={() => {
-                  setSelectedCategory('Tümü')
-                  setSearchTerm('')
-                }}
-                className="text-xs text-teal-600 hover:text-teal-700 font-medium hover:underline transition-colors"
-              >
-                Filtreyi Temizle
-              </button>
+              Filtreyi Temizle
+            </button>
           </div>
-          )}
+        )}
 
         {/* Popular Places Section */}
-          {popularPlaces.length > 0 && (
+        {popularPlaces.length > 0 && (
           <section className="mb-8">
             <h2 className="text-2xl font-poppins font-bold text-teal-900 mb-6 flex items-center gap-3">
-                <span>Popüler Mekanlar</span>
+              <span>Popüler Mekanlar</span>
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                {popularPlaces.map((place, index) => (
+              {popularPlaces.map((place, index) => (
                 <DynamicPlaceCard key={place.id} place={place} index={index} isPopular={true} />
-                ))}
+              ))}
             </div>
           </section>
-          )}
+        )}
 
         {/* All Places Section */}
         <section>
           <h2 className="text-2xl font-poppins font-bold text-teal-900 mb-6 flex items-center gap-3">
-              <span>{popularPlaces.length > 0 ? 'Tüm Mekanlar' : 'Mekanlar'}</span>
+            <span>{popularPlaces.length > 0 ? 'Tüm Mekanlar' : 'Mekanlar'}</span>
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-              {otherPlaces.map((place, index) => (
+            {otherPlaces.map((place, index) => (
               <DynamicPlaceCard key={place.id} place={place} index={index} isPopular={false} />
-              ))}
-              {otherPlaces.length === 0 && popularPlaces.length === 0 && (
+            ))}
+            {otherPlaces.length === 0 && popularPlaces.length === 0 && (
               <div className="col-span-full text-center py-16 bg-white/80 backdrop-blur-sm rounded-2xl shadow-md border border-teal-100">
-                  <p className="text-xl font-poppins font-bold text-gray-700 mb-2">Bu kategoriye ait mekan bulunamadı</p>
-                  <p className="text-sm text-gray-500 font-inter">Farklı bir kategori deneyin veya arama yapın</p>
+                <p className="text-xl font-poppins font-bold text-gray-700 mb-2">Bu kategoriye ait mekan bulunamadı</p>
+                <p className="text-sm text-gray-500 font-inter">Farklı bir kategori deneyin veya arama yapın</p>
               </div>
-              )}
+            )}
           </div>
           {hasMoreRef.current && (
             <div className="flex justify-center mt-8">
@@ -434,15 +433,15 @@ function PlaceCard({ place, index, isPopular = false }: { place: any; index: num
   useEffect(() => {
     const commentsRef = collection(db, 'places', String(place.id), 'comments')
     const q = query(commentsRef, orderBy('createdAt', 'desc'))
-    
+
     let unsubscribe: (() => void) | null = null
     try {
       unsubscribe = onSnapshot(
         q,
         (snapshot) => {
           try {
-      const comments = snapshot.docs.map(doc => doc.data())
-      setCommentCount(comments.length)
+            const comments = snapshot.docs.map(doc => doc.data())
+            setCommentCount(comments.length)
           } catch (error) {
             console.error('Error processing comment count snapshot:', error)
           }
@@ -515,10 +514,10 @@ function PlaceCard({ place, index, isPopular = false }: { place: any; index: num
     >
       <Link href={`/places/${place.id}`}>
         <div className="relative h-56 overflow-hidden">
-          <img 
-            src={place.imageUrl || '/default-place.jpg'} 
-            alt={place.name} 
-            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+          <img
+            src={place.imageUrl || '/default-place.jpg'}
+            alt={place.name}
+            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
           />
           {place.category && (
             <div className="absolute top-3 left-3 bg-gradient-to-r from-teal-500 to-cyan-500 text-white px-3 py-1 rounded-full shadow-lg">
@@ -546,25 +545,25 @@ function PlaceCard({ place, index, isPopular = false }: { place: any; index: num
             </motion.button>
           )}
         </div>
-        
-          <div className="p-5">
+
+        <div className="p-5">
           <h3 className="text-xl font-poppins font-bold text-gray-900 mb-2 group-hover:text-teal-600 transition-colors duration-300 line-clamp-1">
             {place.name}
           </h3>
-          
+
           {place.address && (
             <div className="flex items-center text-gray-600 mb-3">
               <MapPin className="w-4 h-4 mr-1 flex-shrink-0 text-teal-500" />
               <span className="text-sm font-inter line-clamp-1">{place.address}</span>
             </div>
           )}
-          
+
           {(place.latitude && place.longitude) && (
             <div className="text-xs text-teal-600 font-inter mb-2 bg-teal-50 px-2 py-1 rounded-lg inline-flex items-center gap-1">
               <MapPin className="w-3.5 h-3.5" /> {place.latitude.toFixed(6)}, {place.longitude.toFixed(6)}
             </div>
           )}
-          
+
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center bg-amber-50 px-3 py-1 rounded-full">
               {renderStars(place.rating || 0)}
