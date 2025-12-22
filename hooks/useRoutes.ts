@@ -31,6 +31,7 @@ export interface Route {
   days: number
   createdAt: Timestamp | Date
   places: RoutePlace[]
+  itinerary?: any[]
 }
 
 export const useRoutes = () => {
@@ -58,7 +59,8 @@ export const useRoutes = () => {
             name: data.name || 'İsimsiz Rota',
             days: data.days || 1,
             createdAt: data.createdAt || Timestamp.now(),
-            places: data.places || []
+            places: data.places || [],
+            itinerary: data.itinerary || []
           }
         })
         setRoutes(routesData)
@@ -115,7 +117,8 @@ export const useRoutes = () => {
         name: data.name || 'İsimsiz Rota',
         days: data.days || 1,
         createdAt: data.createdAt || Timestamp.now(),
-        places: data.places || []
+        places: data.places || [],
+        itinerary: data.itinerary || []
       }
     } catch (error) {
       console.error('Error getting route:', error)

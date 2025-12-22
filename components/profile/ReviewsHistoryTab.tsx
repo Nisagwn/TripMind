@@ -5,10 +5,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, Star, Edit, Trash2, MapPin, Calendar, X, Check, ChevronDown } from 'lucide-react'
 import Link from 'next/link'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, doc, updateDoc, deleteDoc } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore'
 import toast from 'react-hot-toast'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ReviewSkeleton, GridSkeleton } from '@/components/SkeletonLoader'
+import { getUserComments, getUserHistory, removeComment, updateComment, UserComment } from '@/lib/userData'
 
 interface ReviewsHistoryTabProps {
   userId: string
@@ -22,69 +23,83 @@ interface ReviewsData {
   visitedPlaces: any[]
 }
 
-// Fetch reviews and history
+// Fetch reviews and history from subcollections
 async function fetchReviewsAndHistory(userId: string): Promise<ReviewsData> {
-  const cacheKey = `profile_reviews_${userId}`
-  const cached = localStorage.getItem(cacheKey)
-  if (cached) {
-    const { data, timestamp } = JSON.parse(cached)
-    if (Date.now() - timestamp < 5 * 60 * 1000) {
-      console.log('📦 Using cached reviews data')
-      return data
-    }
-  }
+  const comments = await getUserComments(userId)
+  const historyIds = await getUserHistory(userId)
 
-  // Fetch user's reviews (limit to 30 places for performance)
-  const placesSnap = await getDocs(collection(db, 'places'))
-  const userReviews: any[] = []
-  const placesToCheck = placesSnap.docs.slice(0, 30)
+  // Fetch place details for comments
+  const placesRef = collection(db, 'places')
+  const placesSnap = await getDocs(placesRef)
+  const placesMap = new Map(placesSnap.docs.map(doc => [doc.id, { id: doc.id, ...doc.data() }]))
 
-  for (const placeDoc of placesToCheck) {
-    const commentsRef = collection(db, 'places', placeDoc.id, 'comments')
-    const commentsSnap = await getDocs(commentsRef)
+  // Map comments to reviews with place details
+  const reviews = await Promise.all(
+    comments.map(async (comment: UserComment) => {
+      const place = placesMap.get(comment.placeId)
+      if (!place) return null
 
-    commentsSnap.docs.forEach(commentDoc => {
-      const comment = commentDoc.data()
-      if (comment.userId === userId) {
-        userReviews.push({
-          id: commentDoc.id,
-          placeId: placeDoc.id,
-          placeName: placeDoc.data().name,
-          placeImage: placeDoc.data().imageUrl || placeDoc.data().image,
-          ...comment,
-        })
+      return {
+        id: comment.id, // Use comment document ID
+        placeId: comment.placeId,
+        placeName: comment.placeName || place.name,
+        placeImage: place.imageUrl || place.image,
+        comment: comment.text || comment.comment || '', // Support both 'text' and 'comment' for backward compatibility
+        rating: comment.rating || 0,
+        photoUrl: comment.photoUrl,
+        createdAt: comment.createdAt,
+        // Store comment ID for update/delete
+        _commentId: comment.id
       }
     })
-  }
+  )
 
-  // Sort by date
-  userReviews.sort((a, b) => {
-    const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : new Date(0)
-    const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : new Date(0)
-    return dateB.getTime() - dateA.getTime()
-  })
+  // Filter out nulls and sort by date (newest first)
+  const userReviews = reviews
+    .filter(Boolean)
+    .sort((a: any, b: any) => {
+      // Handle both Timestamp and Date objects
+      const dateA = a.createdAt?.toDate ? a.createdAt.toDate() : (a.createdAt?.seconds ? new Date(a.createdAt.seconds * 1000) : new Date(0))
+      const dateB = b.createdAt?.toDate ? b.createdAt.toDate() : (b.createdAt?.seconds ? new Date(b.createdAt.seconds * 1000) : new Date(0))
+      return dateB.getTime() - dateA.getTime() // Newest first
+    }) as any[]
 
-  // Fetch visited places
-  const visitedRef = collection(db, 'users', userId, 'visitedPlaces')
-  const visitedSnap = await getDocs(visitedRef)
-  const visited = visitedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
-  
-  // Sort by timestamp
-  visited.sort((a: any, b: any) => {
-    const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(0)
-    const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(0)
-    return dateB.getTime() - dateA.getTime()
-  })
+  // Fetch visited places from history subcollection
+  const visitedPlaces = await Promise.all(
+    historyIds.map(async (placeId: string) => {
+      try {
+        const placeRef = doc(db, 'places', placeId)
+        const placeSnap = await getDoc(placeRef)
+        if (placeSnap.exists()) {
+          const placeData = placeSnap.data()
+          // Find comment for this place to get photoUrl and rating
+          const placeComment = comments.find((c: UserComment) => c.placeId === placeId)
+          
+          return {
+            placeId,
+            placeName: placeData.name,
+            photoUrl: placeComment?.photoUrl || placeData.imageUrl || placeData.image,
+            rating: placeComment?.rating || placeData.rating || 0,
+            city: placeData.city || placeData.address?.split(',')[0] || 'Bilinmeyen',
+            timestamp: placeComment?.createdAt || null
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching place:', error)
+      }
+      return null
+    })
+  )
 
-  const data = { reviews: userReviews, visitedPlaces: visited }
+  const visited = visitedPlaces
+    .filter(Boolean)
+    .sort((a: any, b: any) => {
+      const dateA = a.timestamp?.toDate ? a.timestamp.toDate() : new Date(0)
+      const dateB = b.timestamp?.toDate ? b.timestamp.toDate() : new Date(0)
+      return dateB.getTime() - dateA.getTime()
+    }) as any[]
 
-  // Cache to localStorage
-  localStorage.setItem(cacheKey, JSON.stringify({
-    data,
-    timestamp: Date.now()
-  }))
-
-  return data
+  return { reviews: userReviews, visitedPlaces: visited }
 }
 
 export default function ReviewsHistoryTab({ userId, userName }: ReviewsHistoryTabProps) {
@@ -122,20 +137,33 @@ export default function ReviewsHistoryTab({ userId, userName }: ReviewsHistoryTa
   const displayedVisitedPlaces = visitedPlaces.slice(0, visitedLimit)
 
   const handleEditReview = async () => {
-    if (!editingReview || !editedText.trim()) return
+    if (!editingReview || !editedText.trim() || !editingReview._commentId) return
 
     const loadingToast = toast.loading('Güncelleniyor...')
 
     try {
-      const reviewRef = doc(db, 'places', editingReview.placeId, 'comments', editingReview.id)
-      await updateDoc(reviewRef, {
-        comment: editedText.trim(),
-        rating: editedRating,
-      })
+      await updateComment(userId, editingReview._commentId, editedText.trim(), editedRating)
+
+      // Also update in places/{placeId}/comments if it exists
+      try {
+        const commentsRef = collection(db, 'places', editingReview.placeId, 'comments')
+        const commentsSnap = await getDocs(commentsRef)
+        const userCommentDoc = commentsSnap.docs.find(
+          doc => doc.data().userId === userId && doc.data().comment === editingReview.comment
+        )
+        if (userCommentDoc) {
+          const commentRef = doc(db, 'places', editingReview.placeId, 'comments', userCommentDoc.id)
+          await updateDoc(commentRef, {
+            comment: editedText.trim(),
+            rating: editedRating,
+          })
+        }
+      } catch (error) {
+        console.error('Error updating comment in places:', error)
+      }
 
       // Invalidate cache
       queryClient.invalidateQueries({ queryKey: ['reviewsHistory', userId] })
-      localStorage.removeItem(`profile_reviews_${userId}`)
 
       toast.success('Yorum güncellendi! ✅', { id: loadingToast })
       setEditingReview(null)
@@ -153,12 +181,27 @@ export default function ReviewsHistoryTab({ userId, userName }: ReviewsHistoryTa
     const loadingToast = toast.loading('Siliniyor...')
 
     try {
-      const reviewRef = doc(db, 'places', review.placeId, 'comments', review.id)
-      await deleteDoc(reviewRef)
+      if (review._commentId) {
+        await removeComment(userId, review._commentId)
+      }
+
+      // Also delete from places/{placeId}/comments if it exists
+      try {
+        const commentsRef = collection(db, 'places', review.placeId, 'comments')
+        const commentsSnap = await getDocs(commentsRef)
+        const userCommentDoc = commentsSnap.docs.find(
+          doc => doc.data().userId === userId && doc.data().comment === review.comment
+        )
+        if (userCommentDoc) {
+          const commentRef = doc(db, 'places', review.placeId, 'comments', userCommentDoc.id)
+          await deleteDoc(commentRef)
+        }
+      } catch (error) {
+        console.error('Error deleting comment from places:', error)
+      }
 
       // Invalidate cache
       queryClient.invalidateQueries({ queryKey: ['reviewsHistory', userId] })
-      localStorage.removeItem(`profile_reviews_${userId}`)
 
       toast.success('Yorum silindi ✅', { id: loadingToast })
     } catch (error) {
@@ -170,7 +213,7 @@ export default function ReviewsHistoryTab({ userId, userName }: ReviewsHistoryTa
   const openEditModal = (review: any) => {
     setEditingReview(review)
     setEditedText(review.comment)
-    setEditedRating(review.rating)
+    setEditedRating(review.rating || 5)
   }
 
   if (isLoading) {

@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { collection, addDoc } from 'firebase/firestore'
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import toast from 'react-hot-toast'
 import type { User } from './types'
+import { updateHistory } from '@/lib/userData'
 
 type CommentReplyBoxProps = {
   placeId: number | string
@@ -51,24 +52,36 @@ export default function CommentReplyBox({ placeId, parentId, allUsers, onReplySu
     const loadingToast = toast.loading('Yanıt gönderiliyor...')
     try {
       const mentions = extractMentions(replyText)
-      await addDoc(collection(db, 'places', String(placeId), 'comments'), {
+      const payload = {
         userId: user.uid,
         userDisplayName: user?.displayName || user?.email || "Anonim Kullanıcı",
         userAvatar: user.photoURL || "",
         rating: 0,
-        comment: replyText.trim(),
+        text: replyText.trim(),
+        comment: replyText.trim(), // backward compat
         photoUrl: null,
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         likes: 0,
         dislikes: 0,
         userReactions: {},
-        parentCommentId: parentId,
+        parentCommentId: parentId || null,
         mentions
-      })
+      }
+
+      await addDoc(collection(db, 'places', String(placeId), 'comments'), payload)
+
+      // update visitedPlaces to match security rules and use server timestamp
+      try {
+        await updateHistory(user.uid, String(placeId))
+      } catch (uhErr) {
+        console.error((uhErr as any).code, (uhErr as any).message)
+      }
+
       toast.success('Yanıt eklendi ✅', { id: loadingToast })
       setReplyText('')
       onReplySubmitted()
     } catch (e) {
+      console.error((e as any).code, (e as any).message)
       console.error(e)
       toast.error('Bir şeyler ters gitti ❌', { id: loadingToast })
       onReplySubmitted()

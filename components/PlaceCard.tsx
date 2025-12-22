@@ -13,7 +13,7 @@ import { collection, onSnapshot, orderBy, query } from 'firebase/firestore'
 export default function PlaceCard({ place, index, isPopular = false }: { place: any; index: number; isPopular?: boolean }) {
   const [commentCount, setCommentCount] = useState(0)
   const { user } = useAuth()
-  const { isFavorite, addToFavorites, removeFromFavorites, getFavoriteId } = useFavorites()
+  const { isFavorite, toggleFavorite } = useFavorites()
   const [isToggling, setIsToggling] = useState(false)
   const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
@@ -58,28 +58,12 @@ export default function PlaceCard({ place, index, isPopular = false }: { place: 
     setIsToggling(true)
     debounceRef.current = setTimeout(async () => {
       try {
-        if (isFavorite(place.id)) {
-          const favoriteId = getFavoriteId(place.id)
-          if (favoriteId) {
-            await removeFromFavorites(favoriteId)
-          }
-        } else {
-          await addToFavorites(place.id, {
-            id: place.id,
-            name: place.name,
-            image: place.imageUrl,
-            category: place.category,
-            price: place.priceLevel,
-            rating: place.rating,
-            address: place.address,
-            coordinates: { lat: place.latitude, lng: place.longitude }
-          })
-        }
+        await toggleFavorite(place.id)
       } finally {
         setIsToggling(false)
       }
     }, 500)
-  }, [user, isToggling, isFavorite, place, getFavoriteId, removeFromFavorites, addToFavorites])
+  }, [user, isToggling, place.id, toggleFavorite])
 
   const renderStars = (rating: number) => {
     return Array.from({ length: 5 }).map((_, i) => (
@@ -145,11 +129,16 @@ export default function PlaceCard({ place, index, isPopular = false }: { place: 
             </div>
           )}
 
-          {(place.latitude && place.longitude) && (
-            <div className="text-xs text-teal-600 font-inter mb-2 bg-teal-50 px-2 py-1 rounded-lg inline-block">
-              📍 {place.latitude.toFixed(6)}, {place.longitude.toFixed(6)}
-            </div>
-          )}
+          {(() => {
+            const lat = Number(place?.lat ?? place?.latitude)
+            const lng = Number(place?.lng ?? place?.longitude)
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+            return (
+              <div className="text-xs text-teal-600 font-inter mb-2 bg-teal-50 px-2 py-1 rounded-lg inline-block">
+                📍 {lat.toFixed(6)}, {lng.toFixed(6)}
+              </div>
+            )
+          })()}
 
           <div className="flex items-center gap-2 mb-3">
             <div className="flex items-center bg-amber-50 px-3 py-1 rounded-full">

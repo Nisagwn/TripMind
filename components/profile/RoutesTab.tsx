@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Route, Calendar, MapPin, Eye, Trash2, Loader2 } from 'lucide-react'
 import { db } from '@/lib/firebase'
@@ -45,6 +45,10 @@ export default function RoutesTab({ userId }: RoutesTabProps) {
   const [loading, setLoading] = useState(true)
   const [selectedRoute, setSelectedRoute] = useState<Route | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [mapExpanded, setMapExpanded] = useState(false)
+  const [showMap, setShowMap] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const modalRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (!userId) return
@@ -71,6 +75,15 @@ export default function RoutesTab({ userId }: RoutesTabProps) {
 
     fetchRoutes()
   }, [userId])
+
+  // Listen to fullscreen change to update local state
+  useEffect(() => {
+    const handler = () => {
+      setIsFullscreen(document.fullscreenElement === modalRef.current)
+    }
+    document.addEventListener('fullscreenchange', handler)
+    return () => document.removeEventListener('fullscreenchange', handler)
+  }, [])
 
   const handleDelete = async (routeId: string) => {
     if (!user || user.uid !== userId) {
@@ -188,7 +201,7 @@ export default function RoutesTab({ userId }: RoutesTabProps) {
 
             <div className="flex gap-2 mt-4">
               <button
-                onClick={() => setSelectedRoute(route)}
+                onClick={() => { setSelectedRoute(route); setMapExpanded(true); setShowMap(true) }}
                 className="flex-1 flex items-center justify-center gap-2 px-4 py-2 bg-gradient-to-r from-teal-500 to-cyan-500 text-white rounded-xl hover:shadow-md transition-all duration-300 font-inter font-medium text-sm"
               >
                 <Eye className="w-4 h-4" />
@@ -226,11 +239,12 @@ export default function RoutesTab({ userId }: RoutesTabProps) {
             />
 
             {/* Modal */}
-            <motion.div
+              <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
               className="fixed inset-4 sm:inset-8 md:inset-16 lg:inset-32 z-50 bg-white rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+              ref={modalRef}
             >
               {/* Header */}
               <div className="bg-gradient-to-r from-teal-500 to-cyan-500 text-white p-6 flex items-center justify-between">
@@ -249,19 +263,59 @@ export default function RoutesTab({ userId }: RoutesTabProps) {
                     </div>
                   </div>
                 </div>
-                <button
-                  onClick={() => setSelectedRoute(null)}
-                  className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
-                >
-                  ✕
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={async () => {
+                      // ensure map is shown
+                      setShowMap(true)
+                      setMapExpanded(true)
+                      // toggle fullscreen on modal container
+                      try {
+                        if (document.fullscreenElement === modalRef.current) {
+                          await document.exitFullscreen()
+                        } else if (modalRef.current) {
+                          // request fullscreen on the modal element
+                          // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+                          // @ts-ignore
+                          await modalRef.current.requestFullscreen()
+                        }
+                      } catch (e) {
+                        console.error('Fullscreen toggle failed', e)
+                      }
+                    }}
+                    className="px-3 py-1 rounded-full bg-white/20 hover:bg-white/30 transition-colors text-sm flex items-center gap-2"
+                    aria-label="Tam Ekran"
+                    title="Tam Ekran"
+                  >
+                    {/* simple fullscreen SVG icon */}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+                      <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+                      <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+                      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+                    </svg>
+                  </button>
+                  <button
+                    onClick={() => { setSelectedRoute(null); setMapExpanded(false); setShowMap(false) }}
+                    className="w-10 h-10 rounded-full bg-white/20 hover:bg-white/30 transition-colors flex items-center justify-center"
+                    aria-label="Kapat"
+                  >
+                    ✕
+                  </button>
+                </div>
               </div>
 
               {/* Map */}
               <div className="flex-1 p-6 overflow-auto min-h-[400px]">
                 {selectedRoute.places && selectedRoute.places.length > 0 ? (
                   <div className="h-full min-h-[400px]">
-                    <RouteMap places={selectedRoute.places} height="400px" />
+                    {showMap ? (
+                      <RouteMap places={selectedRoute.places} height={isFullscreen ? '100vh' : (mapExpanded ? '80vh' : '400px')} expanded={isFullscreen || mapExpanded} />
+                    ) : (
+                      <div className="w-full h-[400px] bg-teal-50 rounded-xl flex items-center justify-center">
+                        <p className="text-teal-600 font-inter">Haritada görüntülemek için 'Tam Ekran' e tıklayın</p>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="w-full h-full min-h-[400px] flex items-center justify-center bg-teal-50 rounded-xl">

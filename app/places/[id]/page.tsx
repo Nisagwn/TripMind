@@ -17,7 +17,7 @@ export default function PlaceDetailPage() {
   const [loading, setLoading] = useState(true);
   const [selectedPhoto, setSelectedPhoto] = useState(0);
   const { user } = useAuth();
-  const { isFavorite, addToFavorites, removeFromFavorites, getFavoriteId } = useFavorites();
+  const { isFavorite, toggleFavorite } = useFavorites();
   const [isToggling, setIsToggling] = useState(false);
   const [userPhotos, setUserPhotos] = useState<any[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<any[]>([]);
@@ -150,30 +150,11 @@ export default function PlaceDetailPage() {
   };
 
   const handleToggleFavorite = async () => {
-    if (!user || isToggling) return;
+    if (!user || isToggling || !place) return;
 
     setIsToggling(true);
     try {
-      if (isFavorite(place.id)) {
-        const favoriteId = getFavoriteId(place.id);
-        if (favoriteId) {
-          await removeFromFavorites(favoriteId);
-        }
-      } else {
-        await addToFavorites(place.id, {
-          id: place.id,
-          name: place.name,
-          image: place.imageUrl,
-          category: place.category,
-          price: place.priceLevel,
-          rating: place.rating,
-          address: place.address,
-          coordinates: {
-            lat: place.latitude,
-            lng: place.longitude
-          }
-        });
-      }
+      await toggleFavorite(place.id);
     } finally {
       setIsToggling(false);
     }

@@ -5,80 +5,79 @@ import { motion } from 'framer-motion'
 import { Heart, Camera, MapPin, Star, Trash2, X, ChevronDown } from 'lucide-react'
 import Link from 'next/link'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, deleteDoc, doc } from 'firebase/firestore'
+import { collection, getDocs, doc, getDoc } from 'firebase/firestore'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { GridSkeleton } from '@/components/SkeletonLoader'
+import { getUserFavorites, getUserComments, toggleFavorite } from '@/lib/userData'
 
 interface FavoritesGalleryTabProps {
   userId: string
 }
 
-// Fetch favorites
+// Fetch favorites with place details from subcollection
 async function fetchFavorites(userId: string) {
-  const cacheKey = `profile_favorites_${userId}`
-  const cached = localStorage.getItem(cacheKey)
-  if (cached) {
-    const { data, timestamp } = JSON.parse(cached)
-    if (Date.now() - timestamp < 5 * 60 * 1000) {
-      console.log('📦 Using cached favorites data')
-      return data
-    }
+  const favoritesList = await getUserFavorites(userId)
+
+  if (favoritesList.length === 0) {
+    return []
   }
 
-  const favoritesRef = collection(db, 'users', userId, 'favorites')
-  const favoritesSnap = await getDocs(favoritesRef)
-  const favs = favoritesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+  // Fetch place details for each favorite
+  const placesRef = collection(db, 'places')
+  const placesSnap = await getDocs(placesRef)
+  const placesMap = new Map(placesSnap.docs.map(doc => [doc.id, { id: doc.id, ...doc.data() }]))
 
-  localStorage.setItem(cacheKey, JSON.stringify({
-    data: favs,
-    timestamp: Date.now()
-  }))
-
-  return favs
-}
-
-// Fetch user photos
-async function fetchUserPhotos(userId: string) {
-  const cacheKey = `profile_photos_${userId}`
-  const cached = localStorage.getItem(cacheKey)
-  if (cached) {
-    const { data, timestamp } = JSON.parse(cached)
-    if (Date.now() - timestamp < 5 * 60 * 1000) {
-      console.log('📦 Using cached photos data')
-      return data
-    }
-  }
-
-  const placesSnap = await getDocs(collection(db, 'places'))
-  const userPhotos: any[] = []
-
-  // Limit to first 30 places for performance
-  const placesToCheck = placesSnap.docs.slice(0, 30)
-
-  for (const placeDoc of placesToCheck) {
-    const commentsRef = collection(db, 'places', placeDoc.id, 'comments')
-    const commentsSnap = await getDocs(commentsRef)
-    
-    commentsSnap.docs.forEach(commentDoc => {
-      const comment = commentDoc.data()
-      if (comment.userId === userId && comment.photoUrl) {
-        userPhotos.push({
-          id: commentDoc.id,
-          photoUrl: comment.photoUrl,
-          placeName: placeDoc.data().name,
-          placeId: placeDoc.id,
-          createdAt: comment.createdAt,
-        })
+  // Map favorite IDs to place data
+  const favorites = favoritesList
+    .map(favorite => {
+      const place = placesMap.get(favorite.placeId)
+      if (!place) return null
+      return {
+        placeId: favorite.placeId,
+        placeData: {
+          id: place.id,
+          name: place.name,
+          image: place.imageUrl || place.image,
+          category: place.category,
+          address: place.address,
+          rating: place.rating
+        }
       }
     })
-  }
+    .filter(Boolean) as any[]
 
-  localStorage.setItem(cacheKey, JSON.stringify({
-    data: userPhotos,
-    timestamp: Date.now()
-  }))
+  return favorites
+}
 
-  return userPhotos
+// Fetch user photos from comments subcollection
+async function fetchUserPhotos(userId: string) {
+  const comments = await getUserComments(userId)
+
+  // Filter comments with photos
+  const photosWithPlaces = await Promise.all(
+    comments
+      .filter((comment) => comment.photoUrl)
+      .map(async (comment) => {
+        try {
+          const placeRef = doc(db, 'places', comment.placeId)
+          const placeSnap = await getDoc(placeRef)
+          if (placeSnap.exists()) {
+            return {
+              id: comment.id,
+              photoUrl: comment.photoUrl,
+              placeName: comment.placeName || placeSnap.data().name,
+              placeId: comment.placeId,
+              createdAt: comment.createdAt,
+            }
+          }
+        } catch (error) {
+          console.error('Error fetching place:', error)
+        }
+        return null
+      })
+  )
+
+  return photosWithPlaces.filter(Boolean) as any[]
 }
 
 export default function FavoritesGalleryTab({ userId }: FavoritesGalleryTabProps) {
@@ -103,14 +102,13 @@ export default function FavoritesGalleryTab({ userId }: FavoritesGalleryTabProps
     gcTime: 10 * 60 * 1000,
   })
 
-  const handleRemoveFavorite = async (favoriteId: string) => {
-    setRemovingId(favoriteId)
+  const handleRemoveFavorite = async (placeId: string) => {
+    setRemovingId(placeId)
     try {
-      await deleteDoc(doc(db, 'users', userId, 'favorites', favoriteId))
+      await toggleFavorite(userId, placeId)
       
       // Invalidate cache
       queryClient.invalidateQueries({ queryKey: ['favorites', userId] })
-      localStorage.removeItem(`profile_favorites_${userId}`)
     } catch (error) {
       console.error('Error removing favorite:', error)
     } finally {
@@ -173,14 +171,14 @@ export default function FavoritesGalleryTab({ userId }: FavoritesGalleryTabProps
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {displayedFavorites.map((favorite: any, index: number) => (
                   <motion.div
-                    key={favorite.id}
+                    key={favorite.placeId}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: index * 0.05 }}
                     whileHover={{ y: -8 }}
                     className="bg-white/90 backdrop-blur-sm rounded-2xl shadow-md overflow-hidden group hover:shadow-xl transition-all duration-300 border border-teal-100 relative"
                   >
-                    <Link href={`/places/${favorite.placeData.id}`}>
+                    <Link href={`/places/${favorite.placeId}`}>
                       <div className="relative h-48 overflow-hidden">
                         <img
                           src={favorite.placeData.image}
@@ -236,12 +234,12 @@ export default function FavoritesGalleryTab({ userId }: FavoritesGalleryTabProps
                       whileTap={{ scale: 0.9 }}
                       onClick={(e) => {
                         e.preventDefault()
-                        handleRemoveFavorite(favorite.id)
+                        handleRemoveFavorite(favorite.placeId)
                       }}
-                      disabled={removingId === favorite.id}
+                      disabled={removingId === favorite.placeId}
                       className="absolute bottom-3 right-3 p-2 bg-rose-500 text-white rounded-full hover:bg-rose-600 transition-all duration-300 shadow-lg disabled:opacity-50 z-10"
                     >
-                      {removingId === favorite.id ? (
+                      {removingId === favorite.placeId ? (
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                       ) : (
                         <Trash2 className="w-4 h-4" />

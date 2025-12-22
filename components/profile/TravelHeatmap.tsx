@@ -88,8 +88,21 @@ export default function TravelHeatmap({ places }: TravelHeatmapProps) {
     )
   }
 
-  const defaultCenter: [number, number] = places.length > 0 
-    ? [places[0].latitude, places[0].longitude]
+  // Sanitize coordinates: convert to numbers and filter invalid points
+  const sanitizedPlaces = places
+    .map((p) => {
+      const lat = Number(p?.lat ?? p?.latitude)
+      const lng = Number(p?.lng ?? p?.longitude)
+      return {
+        ...p,
+        latitude: lat,
+        longitude: lng,
+      }
+    })
+    .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
+
+  const defaultCenter: [number, number] = sanitizedPlaces.length > 0
+    ? [sanitizedPlaces[0].latitude, sanitizedPlaces[0].longitude]
     : [41.0082, 28.9784] // Istanbul default
 
   return (
@@ -104,9 +117,9 @@ export default function TravelHeatmap({ places }: TravelHeatmapProps) {
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       
-      <MapBounds places={places} />
+      <MapBounds places={sanitizedPlaces} />
 
-      {places.map((place) => (
+      {sanitizedPlaces.map((place) => (
         <Marker
           key={place.id}
           position={[place.latitude, place.longitude]}

@@ -75,7 +75,7 @@ export default function PlacesPage() {
   const [sortBy, setSortBy] = useState('rating')
   const [showAllCategories, setShowAllCategories] = useState(false)
   const { user } = useAuth()
-  const { isFavorite, addToFavorites, removeFromFavorites, getFavoriteId } = useFavorites()
+  const { isFavorite, toggleFavorite } = useFavorites()
   const lastDocRef = useRef<any | null>(null)
   const hasMoreRef = useRef<boolean>(true)
 
@@ -221,16 +221,8 @@ export default function PlacesPage() {
 
   const handleToggleFavorite = useCallback(async (place: any) => {
     if (!user) return
-
-    if (isFavorite(place.id)) {
-      const favoriteId = getFavoriteId(place.id)
-      if (favoriteId) {
-        await removeFromFavorites(favoriteId)
-      }
-    } else {
-      await addToFavorites(place.id, place)
-    }
-  }, [user, isFavorite, getFavoriteId, removeFromFavorites, addToFavorites])
+    await toggleFavorite(place.id)
+  }, [user, toggleFavorite])
 
   if (loading) {
     return (
@@ -427,7 +419,7 @@ export default function PlacesPage() {
 function PlaceCard({ place, index, isPopular = false }: { place: any; index: number; isPopular?: boolean }) {
   const [commentCount, setCommentCount] = useState(0)
   const { user } = useAuth()
-  const { isFavorite, addToFavorites, removeFromFavorites, getFavoriteId } = useFavorites()
+  const { isFavorite, toggleFavorite } = useFavorites()
   const [isToggling, setIsToggling] = useState(false)
 
   useEffect(() => {
@@ -471,26 +463,7 @@ function PlaceCard({ place, index, isPopular = false }: { place: any; index: num
 
     setIsToggling(true)
     try {
-      if (isFavorite(place.id)) {
-        const favoriteId = getFavoriteId(place.id)
-        if (favoriteId) {
-          await removeFromFavorites(favoriteId)
-        }
-      } else {
-        await addToFavorites(place.id, {
-          id: place.id,
-          name: place.name,
-          image: place.imageUrl,
-          category: place.category,
-          price: place.priceLevel,
-          rating: place.rating,
-          address: place.address,
-          coordinates: {
-            lat: place.latitude,
-            lng: place.longitude
-          }
-        })
-      }
+      await toggleFavorite(place.id)
     } finally {
       setIsToggling(false)
     }

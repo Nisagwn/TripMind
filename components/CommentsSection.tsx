@@ -36,22 +36,26 @@ export default function CommentsSection({ placeId }: { placeId: number | string 
             const list = snap.docs.map((d) => ({ ...(d.data() as CommentWithId), id: d.id }))
       setComments(list)
           } catch (error) {
-            console.error('Error processing comments snapshot:', error)
+            console.error('Error processing comments snapshot:', (error as any)?.code, (error as any)?.message)
+            console.error(error)
           }
         },
         (error) => {
-          console.error('Comments snapshot error:', error)
+          console.error('Comments snapshot error:', (error as any)?.code, (error as any)?.message)
+          console.error(error)
         }
       )
     } catch (error) {
-      console.error('Error setting up comments listener:', error)
+      console.error('Error setting up comments listener:', (error as any)?.code, (error as any)?.message)
+      console.error(error)
     }
     return () => {
       if (unsubscribe) {
         try {
           unsubscribe()
         } catch (error) {
-          console.error('Error unsubscribing from comments:', error)
+          console.error('Error unsubscribing from comments:', (error as any)?.code, (error as any)?.message)
+          console.error(error)
         }
       }
     }
@@ -67,7 +71,8 @@ export default function CommentsSection({ placeId }: { placeId: number | string 
         })
         setAllUsers(users)
     } catch (e) {
-        console.error('loadUsers', e)
+        console.error('loadUsers', (e as any)?.code, (e as any)?.message)
+        console.error(e)
       }
     }
     loadUsers()
@@ -143,7 +148,8 @@ export default function CommentsSection({ placeId }: { placeId: number | string 
           trx.update(commentRef, { likes, dislikes, userReactions })
       })
     } catch (e) {
-        console.error('toggleLikeDislike', e)
+      console.error('toggleLikeDislike', (e as any)?.code, (e as any)?.message)
+      console.error(e)
         // Revert optimistic update on error
         if (previousComment) {
           setComments(prev => prev.map(c => 
@@ -176,7 +182,8 @@ export default function CommentsSection({ placeId }: { placeId: number | string 
       
       toast.success('Yorum başarıyla silindi ✅', { id: loadingToast })
     } catch (e) {
-      console.error('deleteComment', e)
+      console.error('deleteComment', (e as any)?.code, (e as any)?.message)
+      console.error(e)
       toast.error('Yorum silinirken bir hata oluştu ❌', { id: loadingToast })
     }
   }, [placeId, user])

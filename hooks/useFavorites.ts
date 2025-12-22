@@ -2,145 +2,91 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { 
-  collection, 
-  addDoc, 
-  deleteDoc, 
-  onSnapshot, 
-  doc,
-  setDoc,
-  serverTimestamp
-} from 'firebase/firestore'
+import { collection, onSnapshot } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
-
-export type Favorite = {
-  id: string
-  placeId: string | number
-  placeData: any
-  addedAt: any
-}
+import { toggleFavorite } from '@/lib/userData'
 
 export const useFavorites = () => {
-  const [favorites, setFavorites] = useState<Favorite[]>([])
+  const [favoriteIds, setFavoriteIds] = useState<string[]>([])
   const [loading, setLoading] = useState(true)
   const { user } = useAuth()
 
-  // Firestore'a undefined girmemesi için gerekli temizlik
-  const sanitizePlaceData = (data: any) => {
-    if (!data || typeof data !== 'object') return {}
-
-    const safe: any = {}
-
-    Object.keys(data).forEach(key => {
-      const value = data[key]
-
-      if (value === undefined) {
-        safe[key] = null
-      } else if (typeof value === 'object' && !Array.isArray(value) && value !== null) {
-        safe[key] = sanitizePlaceData(value)
-      } else {
-        safe[key] = value
-      }
-    })
-
-    return safe
-  }
-
-  // Koleksiyonu oluştur
-  const ensureFavoritesCollection = useCallback(async (userId: string) => {
-    try {
-      const placeholderRef = doc(db, 'users', userId, 'favorites', '_placeholder')
-      await setDoc(placeholderRef, { ok: true })
-      await deleteDoc(placeholderRef)
-    } catch (_) {}
-  }, [])
-
-  // Favorileri dinle
+  // Favorileri dinle - users/{uid}/favorites subcollection
   useEffect(() => {
     if (!user || !user.uid) {
-      setFavorites([])
+      setFavoriteIds([])
       setLoading(false)
       return
     }
 
-    ensureFavoritesCollection(user.uid)
-
-    const userId = String(user.uid)
-    const favoritesCol = collection(db, 'users', userId, 'favorites')
+    const favoritesRef = collection(db, 'users', user.uid, 'favorites')
 
     const unsubscribe = onSnapshot(
-      favoritesCol,
+      favoritesRef,
       (snapshot) => {
-        const favoritesData: Favorite[] = snapshot.docs.map(doc => {
-          const data = doc.data()
-          return {
-            id: doc.id,
-            placeId: data.placeId ?? '',
-            placeData: data.placeData ?? {},
-            addedAt: data.addedAt ?? null
-          }
-        })
-        setFavorites(favoritesData)
+        const ids = snapshot.docs.map(doc => doc.id) // placeId is the document ID
+        setFavoriteIds(ids)
         setLoading(false)
       },
       (error) => {
         console.error('Favorites snapshot error:', error)
-        setFavorites([])
+        setFavoriteIds([])
         setLoading(false)
       }
     )
 
     return () => unsubscribe && unsubscribe()
-  }, [user, ensureFavoritesCollection])
+  }, [user])
 
-  // FAVORİ EKLE (düzeltilmiş versiyon)
-  const addToFavorites = useCallback(async (placeId: number | string, placeData: any) => {
+  // FAVORİ EKLE/KALDIR
+  const addToFavorites = useCallback(async (placeId: number | string, placeData?: any) => {
     if (!user || !user.uid) return
 
     try {
-      const userId = String(user.uid)
       const placeIdStr = String(placeId)
-
-      const safePlaceData = sanitizePlaceData(placeData)
-
-      await addDoc(collection(db, 'users', userId, 'favorites'), {
-        placeId: placeIdStr,
-        placeData: safePlaceData,
-        addedAt: serverTimestamp()
-      })
+      await toggleFavorite(user.uid, placeIdStr)
     } catch (error) {
       console.error('Error adding to favorites:', error)
       throw error
     }
   }, [user])
 
-  const removeFromFavorites = useCallback(async (favoriteId: string) => {
+  const removeFromFavorites = useCallback(async (placeId: number | string) => {
     if (!user || !user.uid) return
 
     try {
-      await deleteDoc(doc(db, 'users', user.uid, 'favorites', favoriteId))
+      const placeIdStr = String(placeId)
+      await toggleFavorite(user.uid, placeIdStr)
     } catch (error) {
-      console.error('Error removing favorite:', error)
+      console.error('Error removing from favorites:', error)
       throw error
     }
   }, [user])
 
   const isFavorite = useCallback((placeId: number | string): boolean => {
     const placeIdStr = String(placeId)
-    return favorites.some(f => String(f.placeId) === placeIdStr)
-  }, [favorites])
+    return favoriteIds.includes(placeIdStr)
+  }, [favoriteIds])
 
-  const getFavoriteId = useCallback((placeId: number | string): string | undefined => {
-    const placeIdStr = String(placeId)
-    return favorites.find(f => String(f.placeId) === placeIdStr)?.id
-  }, [favorites])
+  // Toggle favorite - Add or remove
+  const toggleFavoriteAction = useCallback(async (placeId: number | string) => {
+    if (!user || !user.uid) return false
+
+    try {
+      const placeIdStr = String(placeId)
+      return await toggleFavorite(user.uid, placeIdStr)
+    } catch (error) {
+      console.error('Error toggling favorite:', error)
+      throw error
+    }
+  }, [user])
 
   return {
-    favorites,
+    favoriteIds,
     loading,
     addToFavorites,
     removeFromFavorites,
     isFavorite,
-    getFavoriteId
+    toggleFavorite: toggleFavoriteAction
   }
 }

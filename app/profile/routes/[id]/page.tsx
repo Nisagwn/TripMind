@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { ArrowLeft, MapPin, Calendar, Route } from 'lucide-react'
 import Link from 'next/link'
 import { useAuth } from '@/contexts/AuthContext'
 import { useRoutes, Route as RouteType } from '@/hooks/useRoutes'
-import { LoadScript, GoogleMap, Marker } from "@react-google-maps/api";
+import { LoadScript, GoogleMap, Marker, Polyline } from "@react-google-maps/api";
 
 
 const mapContainerStyle = {
@@ -68,11 +68,63 @@ export default function RouteDetailPage() {
     }
   }
 
-  const center = route.places.length > 0
-    ? {
-        lat: route.places[0].lat,
-        lng: route.places[0].lng
-      }
+  // Build day groups for visualization. Prefer `itinerary` if present.
+  const COLORS = ['#8b5cf6', '#10b981', '#3b82f6', '#f97316'] // purple, green, blue, orange
+
+  const buildDayGroups = () => {
+    // If detailed itinerary exists (saved by planner), use it
+    if ((route as any).itinerary && Array.isArray((route as any).itinerary) && (route as any).itinerary.length > 0) {
+      return (route as any).itinerary.map((day: any, idx: number) => {
+        const positions = (day.activities || [])
+          .map((act: any) => ({
+            ...act,
+            lat: Number(act?.lat ?? act?.latitude),
+            lng: Number(act?.lng ?? act?.longitude)
+          }))
+          .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+
+        return { dayIndex: idx + 1, positions }
+      }).filter((g: any) => g.positions.length > 0)
+    }
+
+    // If places have explicit day/dayIndex property, group by that
+    const placesWithDay = route.places.filter((p: any) => p?.day !== undefined || p?.dayIndex !== undefined)
+    if (placesWithDay.length > 0) {
+      const groups: { [k: string]: any[] } = {}
+      placesWithDay.forEach((p: any) => {
+        const dayKey = p?.day ?? p?.dayIndex ?? 1
+        const lat = Number(p?.lat ?? p?.latitude)
+        const lng = Number(p?.lng ?? p?.longitude)
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return
+        if (!groups[dayKey]) groups[dayKey] = []
+        groups[dayKey].push({ ...p, lat, lng })
+      })
+      return Object.keys(groups).sort((a, b) => Number(a) - Number(b)).map((k) => ({ dayIndex: Number(k), positions: groups[k] }))
+    }
+
+    // Fallback: distribute places across `route.days` evenly
+    const allPlaces = route.places
+      .map((p: any) => ({ ...p, lat: Number(p?.lat ?? p?.latitude), lng: Number(p?.lng ?? p?.longitude) }))
+      .filter((p: any) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+
+    const daysCount = route.days || 1
+    if (daysCount <= 1) {
+      return allPlaces.length > 0 ? [{ dayIndex: 1, positions: allPlaces }] : []
+    }
+
+    const perDay = Math.ceil(allPlaces.length / daysCount) || allPlaces.length
+    const groups = [] as any[]
+    for (let i = 0; i < daysCount; i++) {
+      const slice = allPlaces.slice(i * perDay, (i + 1) * perDay)
+      if (slice.length > 0) groups.push({ dayIndex: i + 1, positions: slice })
+    }
+    return groups
+  }
+
+  const dayGroups = buildDayGroups()
+
+  const center = dayGroups.length > 0 && dayGroups[0].positions.length > 0
+    ? { lat: dayGroups[0].positions[0].lat, lng: dayGroups[0].positions[0].lng }
     : { lat: 36.884, lng: 30.705 }
 
   return (
@@ -135,13 +187,35 @@ export default function RouteDetailPage() {
                 center={center}
                 zoom={10}
               >
-                {route.places.map((place, index) => (
-                  <Marker
-                    key={index}
-                    position={{ lat: place.lat, lng: place.lng }}
-                    label={(index + 1).toString()}
-                  />
-                ))}
+                {dayGroups.map((group: any, gi: number) => {
+                  const color = COLORS[(group.dayIndex - 1) % COLORS.length]
+                  const path = group.positions.map((p: any) => ({ lat: p.lat, lng: p.lng }))
+                  return (
+                    <React.Fragment key={gi}>
+                      {group.positions.map((place: any, idx: number) => (
+                        <Marker
+                          key={`${gi}-${idx}`}
+                          position={{ lat: place.lat, lng: place.lng }}
+                          icon={{
+                            path: window.google?.maps?.SymbolPath.CIRCLE,
+                            scale: 8,
+                            fillColor: color,
+                            fillOpacity: 1,
+                            strokeColor: '#FFFFFF',
+                            strokeWeight: 2,
+                          }}
+                        />
+                      ))}
+
+                      {path.length > 1 && (
+                        <Polyline
+                          path={path}
+                          options={{ strokeColor: color, strokeOpacity: 0.9, strokeWeight: 4 }}
+                        />
+                      )}
+                    </React.Fragment>
+                  )
+                })}
               </GoogleMap>
             </LoadScript>
           </motion.div>

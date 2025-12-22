@@ -34,8 +34,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      setUser(user)
+    // Try to restore a cached user quickly to avoid logout flashes
+    try {
+      const raw = localStorage.getItem('pm_user')
+      if (raw) {
+        const cached = JSON.parse(raw)
+        // set a lightweight user object until Firebase provides the real user
+        setUser(cached as unknown as User)
+      }
+    } catch (e) {
+      // ignore JSON parse errors
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (u) => {
+      if (u) {
+        // persist minimal user info + id token
+        try {
+          const token = await u.getIdToken()
+          const minimal = { uid: u.uid, email: u.email, displayName: u.displayName, photoURL: u.photoURL }
+          localStorage.setItem('pm_user', JSON.stringify(minimal))
+          localStorage.setItem('pm_token', token)
+        } catch (err) {
+          console.error('Error getting id token', err)
+        }
+      } else {
+        localStorage.removeItem('pm_user')
+        localStorage.removeItem('pm_token')
+      }
+
+      setUser(u)
       setLoading(false)
     })
 
@@ -53,7 +80,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signIn = async (email: string, password: string) => {
     try {
-      await signInWithEmailAndPassword(auth, email, password)
+      const cred = await signInWithEmailAndPassword(auth, email, password)
+      // store minimal user info and id token
+      try {
+        const token = await cred.user.getIdToken()
+        const minimal = { uid: cred.user.uid, email: cred.user.email, displayName: cred.user.displayName, photoURL: cred.user.photoURL }
+        localStorage.setItem('pm_user', JSON.stringify(minimal))
+        localStorage.setItem('pm_token', token)
+      } catch (err) {
+        console.error('Error storing token', err)
+      }
     } catch (error) {
       throw error
     }
@@ -62,6 +98,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     try {
       await signOut(auth)
+      // clear persisted data
+      try {
+        localStorage.removeItem('pm_user')
+        localStorage.removeItem('pm_token')
+      } catch (e) {}
     } catch (error) {
       throw error
     }

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { MapPin, Star, MessageSquare, Heart, Award, TrendingUp, Map as MapIcon } from 'lucide-react'
 import { db } from '@/lib/firebase'
-import { collection, getDocs, query, where, collectionGroup } from 'firebase/firestore'
+import { collection, getDocs } from 'firebase/firestore'
 import dynamic from 'next/dynamic'
 import { useQuery } from '@tanstack/react-query'
 import { StatCardSkeleton } from '@/components/SkeletonLoader'
@@ -80,15 +80,14 @@ async function getFavorites(uid: string): Promise<any[]> {
   }
 }
 
-// Helper function: Get user comments from all places
+// Helper function: Get user comments from users/{uid}/comments
 async function getUserComments(uid: string): Promise<any[]> {
   try {
     console.log(`📊 [getUserComments] Fetching comments for user: ${uid}`)
     
-    // Use collectionGroup to query all comments across all places
-    const commentsRef = collectionGroup(db, 'comments')
-    const userCommentsQuery = query(commentsRef, where('userId', '==', uid))
-    const commentsSnap = await getDocs(userCommentsQuery)
+    // Get comments from users/{uid}/comments subcollection
+    const commentsRef = collection(db, 'users', uid, 'comments')
+    const commentsSnap = await getDocs(commentsRef)
     
     if (commentsSnap.empty) {
       console.log(`⚠️ [getUserComments] No comments found for user: ${uid}`)
@@ -97,16 +96,9 @@ async function getUserComments(uid: string): Promise<any[]> {
 
     const comments = commentsSnap.docs.map(doc => {
       const data = doc.data()
-      // Extract placeId from the document path: places/{placeId}/comments/{commentId}
-      const pathParts = doc.ref.path.split('/')
-      const placeIdIndex = pathParts.indexOf('places')
-      const placeId = placeIdIndex !== -1 && pathParts[placeIdIndex + 1] 
-        ? pathParts[placeIdIndex + 1] 
-        : null
-
       return {
         id: doc.id,
-        placeId: placeId,
+        placeId: data.placeId,
         ...data
       }
     })
@@ -115,52 +107,10 @@ async function getUserComments(uid: string): Promise<any[]> {
     return comments
   } catch (error) {
     console.error(`❌ [getUserComments] Error fetching comments for user ${uid}:`, error)
-    // Fallback: try iterating through places if collectionGroup fails
-    console.log(`🔄 [getUserComments] Attempting fallback method...`)
-    return await getUserCommentsFallback(uid)
-  }
-}
-
-// Fallback method: Get user comments by iterating through places
-async function getUserCommentsFallback(uid: string): Promise<any[]> {
-  try {
-    console.log(`📊 [getUserCommentsFallback] Using fallback method for user: ${uid}`)
-    const placesRef = collection(db, 'places')
-    const placesSnap = await getDocs(placesRef)
-    
-    if (placesSnap.empty) {
-      console.log(`⚠️ [getUserCommentsFallback] No places found`)
-      return []
-    }
-
-    const allComments: any[] = []
-    
-    for (const placeDoc of placesSnap.docs) {
-      try {
-        const placeId = placeDoc.id
-        const commentsRef = collection(db, 'places', placeId, 'comments')
-        const userCommentsQuery = query(commentsRef, where('userId', '==', uid))
-        const commentsSnap = await getDocs(userCommentsQuery)
-        
-        commentsSnap.docs.forEach(commentDoc => {
-          allComments.push({
-            id: commentDoc.id,
-            placeId: placeId,
-            ...commentDoc.data()
-          })
-        })
-      } catch (error) {
-        console.error(`❌ [getUserCommentsFallback] Error fetching comments for place ${placeDoc.id}:`, error)
-      }
-    }
-
-    console.log(`✅ [getUserCommentsFallback] Found ${allComments.length} comments via fallback`)
-    return allComments
-  } catch (error) {
-    console.error(`❌ [getUserCommentsFallback] Error in fallback method:`, error)
     return []
   }
 }
+
 
 // Helper function: Get all places (for city/category data)
 async function getAllPlaces(): Promise<any[]> {

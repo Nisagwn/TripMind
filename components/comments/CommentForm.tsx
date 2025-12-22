@@ -5,10 +5,11 @@ import { Star, Send, Camera } from 'lucide-react'
 import { useAuth } from '@/contexts/AuthContext'
 import { storage } from '@/lib/firebase'
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage'
-import { collection, addDoc, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
+import { collection, doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore'
 import { db } from '@/lib/firebase'
 import toast from 'react-hot-toast'
 import type { User } from './types'
+import { updateHistory } from '@/lib/userData'
 
 type CommentFormProps = {
   placeId: number | string
@@ -69,14 +70,42 @@ export default function CommentForm({ placeId, allUsers, onCommentSubmitted, onT
       try {
         const photoUrl = await handleUploadIfAny()
         const mentions = extractMentions(newComment)
-        await addDoc(collection(db, 'places', String(placeId), 'comments'), {
-          userId: user.uid,
-          userDisplayName: user?.displayName || user?.email || "Anonim Kullanıcı",
+        
+        // Get place name first
+        let placeName = 'Bilinmeyen Mekan'
+        try {
+          const placeRef = doc(db, 'places', String(placeId))
+          const placeSnap = await getDoc(placeRef)
+          if (placeSnap.exists()) {
+            placeName = placeSnap.data().name || placeName
+          }
+        } catch (error) {
+          console.error('Error fetching place name:', (error as any)?.code, (error as any)?.message)
+          console.error('Error fetching place name full:', error)
+        }
+
+        const userId = user.uid
+        const userName = user.displayName || user.email || "Anonim Kullanıcı"
+        const text = newComment.trim()
+        const rating = commentRating
+        const createdAt = serverTimestamp()
+
+        // 1) Add comment to places/{placeId}/comments/{commentId}
+        const placeCommentsRef = collection(db, 'places', String(placeId), 'comments')
+        const placeCommentRef = doc(placeCommentsRef)
+        
+        await setDoc(placeCommentRef, {
+          userId,
+          placeId: String(placeId),
+          placeName,
+          text,
+          rating,
+          userName,
+          createdAt,
+          // Additional fields for backward compatibility
+          userDisplayName: userName,
           userAvatar: user.photoURL || "",
-          rating: commentRating,
-          comment: newComment.trim(),
-          photoUrl: photoUrl ? photoUrl : null,
-          createdAt: new Date(),
+          photoUrl: photoUrl || null,
           likes: 0,
           dislikes: 0,
           userReactions: {},
@@ -84,29 +113,23 @@ export default function CommentForm({ placeId, allUsers, onCommentSubmitted, onT
           mentions
         })
 
-        try {
-          const placeRef = doc(db, 'places', String(placeId))
-          const placeSnap = await getDoc(placeRef)
-          
-          if (placeSnap.exists()) {
-            const placeData = placeSnap.data()
-            const visitedPlaceRef = doc(db, 'users', user.uid, 'visitedPlaces', String(placeId))
-            
-            await setDoc(visitedPlaceRef, {
-              placeId: String(placeId),
-              placeName: placeData.name || 'Bilinmeyen',
-              city: placeData.city || placeData.address?.split(',')[0] || 'Bilinmeyen',
-              rating: commentRating,
-              photoUrl: photoUrl || placeData.imageUrl || placeData.image || null,
-              latitude: placeData.latitude || 0,
-              longitude: placeData.longitude || 0,
-              category: placeData.category || '',
-              timestamp: serverTimestamp()
-            }, { merge: true })
-          }
-        } catch (error) {
-          console.error('Error tracking visited place:', error)
-        }
+        // 2) Add comment to users/{uid}/comments/{commentId} with same commentId
+        const userCommentsRef = collection(db, 'users', userId, 'comments')
+        const userCommentRef = doc(userCommentsRef, placeCommentRef.id) // Use same commentId
+        
+        await setDoc(userCommentRef, {
+          userId,
+          placeId: String(placeId),
+          placeName,
+          text,
+          rating,
+          userName,
+          createdAt
+        })
+
+        // Also update history
+        await updateHistory(userId, String(placeId))
+        
         toast.success('Yorum başarıyla eklendi! ✅', { id: loadingToast })
         setNewComment('')
         setCommentRating(5)
@@ -114,6 +137,7 @@ export default function CommentForm({ placeId, allUsers, onCommentSubmitted, onT
         setPreviewUrl(null)
         onCommentSubmitted()
       } catch (e) {
+        console.error((e as any)?.code, (e as any)?.message)
         console.error(e)
         toast.error('Bir şeyler ters gitti ❌', { id: loadingToast })
         onCommentSubmitted()
